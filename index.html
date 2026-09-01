@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prop Performance Calculator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root{
+    --bg:#ffffff; --surface:#f4f4f2; --border:#dddbd6;
+    --text:#1a1915; --text-2:#55534d; --muted:#898781;
+    --danger:#c23331; --radius:10px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#1f1e1b; --surface:#2a2925; --border:#3c3a35;
+      --text:#eceae5; --text-2:#b5b2aa; --muted:#898781; --danger:#e05a58; }
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;}
+  main{max-width:960px;margin:0 auto;padding:24px 16px 48px;}
+  h1{font-size:22px;font-weight:600;margin:0 0 4px;}
+  .sub{color:var(--text-2);font-size:14px;margin:0 0 20px;}
+  label{font-size:13px;color:var(--text-2);display:block;margin-bottom:2px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:0 0 16px;}
+  .pair{display:flex;align-items:center;gap:8px;}
+  input[type=range]{flex:1;accent-color:#2a78d6;}
+  input[type=number],select{background:var(--bg);color:var(--text);
+    border:1px solid var(--border);border-radius:6px;padding:5px 8px;font:inherit;font-size:14px;}
+  input[type=number]{width:78px;}
+  select{width:100%;}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:0 0 16px;}
+  .card{background:var(--surface);border-radius:var(--radius);padding:14px 16px;}
+  .card .k{font-size:13px;color:var(--muted);}
+  .card .v{font-size:22px;font-weight:500;}
+  .card .v2{font-size:13px;color:var(--text-2);}
+  .warn{display:none;color:var(--danger);font-size:13px;margin:0 0 12px;}
+  .chart-head{display:flex;align-items:baseline;justify-content:space-between;margin:20px 0 4px;}
+  .chart-head p{font-size:14px;font-weight:500;margin:0;}
+  .chart-wrap{position:relative;width:100%;height:260px;}
+  button{background:var(--surface);color:var(--text);border:1px solid var(--border);
+    border-radius:6px;padding:4px 12px;font:inherit;font-size:13px;cursor:pointer;}
+  button:hover{border-color:var(--muted);}
+  details{border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;margin:0 0 20px;}
+  summary{cursor:pointer;font-weight:500;font-size:14px;}
+  .eq{margin:12px 0;font-size:15px;}
+  .eq .f{font-family:Georgia,"Times New Roman",serif;font-style:italic;font-size:16px;}
+  .eq .why{color:var(--text-2);font-size:13px;font-style:normal;}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin-top:8px;}
+  th,td{border:1px solid var(--border);padding:5px 8px;text-align:left;}
+  th{background:var(--surface);font-weight:500;}
+  sub,sup{font-size:11px;}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px;}
+  footer{color:var(--muted);font-size:12px;margin-top:32px;}
+</style>
+</head>
+<body>
+<main>
+  <h1>Prop performance calculator</h1>
+  <p class="sub">Static shaft power, torque, and thrust vs RPM, with manufacturer max-RPM limits.</p>
+
+  <details>
+    <summary>Model &amp; equations</summary>
+    <div class="eq"><span class="f">P = K<sub>p</sub> · (B/2)<sup>0.8</sup> · (D/12)<sup>4</sup> · (pitch/12) · (RPM/1000)<sup>3</sup></span> [W]<br>
+      <span class="why">Shaft power. Base formula (2-blade): Boucher, <em>The Electric Motor Handbook</em> — P = k·pitch·D⁴·N³, pitch/D in feet, N in kRPM. ±10–15% for conventional planforms. The (B/2)<sup>0.8</sup> blade-count factor is a community heuristic, origin untraced (see README ref. 6) — mechanism established (NACA TN-698), exponent unpublished; calibrate K<sub>p</sub> per blade count from test data.</span></div>
+    <div class="eq"><span class="f">Q = 60·P / (2π·RPM)</span> [N·m]<br>
+      <span class="why">Torque — exact, from P = τ·ω.</span></div>
+    <div class="eq"><span class="f">T = (2·ρ·A·(FM·P)<sup>2</sup>)<sup>1/3</sup></span>, <span class="f">A = π(0.0254·D)<sup>2</sup>/4</span> [N]<br>
+      <span class="why">Static thrust — hover momentum (actuator disk) theory: FM = (T<sup>3/2</sup>/√(2ρA)) / P<sub>shaft</sub>, rearranged for T. Standard reference: Leishman, <em>Principles of Helicopter Aerodynamics</em>, Cambridge Univ. Press. Typical FM for small props: 0.5–0.7 (published); low-Reynolds props can fall to ~0.4.</span></div>
+    <div class="eq"><span class="f">RPM<sub>max</sub> = K / D</span><br>
+      <span class="why">Manufacturer structural limit (constant tip speed). K per APC published limits (apcprop.com/technical-information/rpm-limits): slow flyer 65k, multi-rotor 105k, folding 120k, thin electric 150k, glow/sport 190k, racing carbon (IC) 225k, racing electric 270k. APC props only — other brands: check the datasheet.</span></div>
+    <table>
+      <tr><th>Symbol</th><th>Meaning</th><th>Unit</th></tr>
+      <tr><td>P</td><td>shaft power</td><td>W</td></tr>
+      <tr><td>Q</td><td>shaft torque</td><td>N·m</td></tr>
+      <tr><td>T</td><td>static thrust</td><td>N</td></tr>
+      <tr><td>D</td><td>prop diameter</td><td>in</td></tr>
+      <tr><td>pitch</td><td>geometric pitch</td><td>in</td></tr>
+      <tr><td>B</td><td>number of blades</td><td>—</td></tr>
+      <tr><td>K<sub>p</sub></td><td>prop power constant, tuned per prop family</td><td>—</td></tr>
+      <tr><td>FM</td><td>figure of merit (static efficiency), typ. 0.4–0.7</td><td>—</td></tr>
+      <tr><td>ρ</td><td>air density (1.225, sea level ISA)</td><td>kg/m³</td></tr>
+      <tr><td>A</td><td>disk area</td><td>m²</td></tr>
+      <tr><td>K</td><td>RPM-limit constant per prop type</td><td>RPM·in</td></tr>
+    </table>
+    <p class="why" style="margin-bottom:0;">Assumptions: static conditions (J = 0), constant coefficients across the RPM range (no Reynolds/Mach effects), sea-level density. Calibrate K<sub>p</sub> and FM from one measured point on a thrust stand.</p>
+  </details>
+
+  <div class="grid">
+    <div><label for="dia">Diameter (in)</label>
+      <div class="pair"><input type="range" id="diaR" min="4" max="40" step="0.5" value="12">
+      <input type="number" id="dia" min="1" max="100" step="0.1" value="12"></div></div>
+    <div><label for="pitch">Pitch (in)</label>
+      <div class="pair"><input type="range" id="pitchR" min="2" max="25" step="0.5" value="6">
+      <input type="number" id="pitch" min="0.5" max="50" step="0.1" value="6"></div></div>
+    <div><label for="blades">Blades</label>
+      <div class="pair"><input type="range" id="bladesR" min="2" max="8" step="1" value="2">
+      <input type="number" id="blades" min="2" max="12" step="1" value="2"></div></div>
+    <div><label for="kp">K<sub>p</sub> (prop constant)</label>
+      <div class="pair"><input type="range" id="kpR" min="1.0" max="1.4" step="0.01" value="1.25">
+      <input type="number" id="kp" min="0.5" max="3" step="0.01" value="1.25"></div></div>
+    <div><label for="fm">FM (figure of merit)</label>
+      <div class="pair"><input type="range" id="fmR" min="0.35" max="0.75" step="0.01" value="0.55">
+      <input type="number" id="fm" min="0.1" max="1" step="0.01" value="0.55"></div></div>
+    <div><label for="oprpm">Readout at RPM</label>
+      <div class="pair"><input type="range" id="oprpmR" min="500" max="12500" step="100" value="8000">
+      <input type="number" id="oprpm" min="100" max="200000" step="100" value="8000"></div></div>
+    <div><label for="ptype">Prop type (RPM limit)</label>
+      <select id="ptype">
+        <option value="65000">Slow flyer — 65k/D</option>
+        <option value="105000">Multi-rotor MR — 105k/D</option>
+        <option value="120000">Folding electric — 120k/D</option>
+        <option value="150000" selected>Thin electric E — 150k/D</option>
+        <option value="190000">Glow / sport — 190k/D</option>
+        <option value="225000">Racing carbon (IC) — 225k/D</option>
+        <option value="270000">Racing (electric) — 270k/D</option>
+        <option value="custom">Custom max RPM</option>
+      </select></div>
+    <div id="customWrap" style="display:none;"><label for="customMax">Custom max RPM</label>
+      <input type="number" id="customMax" min="500" max="200000" step="100" value="10000" style="width:100%;"></div>
+  </div>
+
+  <div class="warn" id="inputErr"></div>
+
+  <div class="cards">
+    <div class="card"><div class="k">Max RPM (this prop)</div><div class="v" id="maxOut">—</div></div>
+    <div class="card"><div class="k">Shaft power</div><div class="v" id="pOut">—</div></div>
+    <div class="card"><div class="k">Torque</div><div class="v" id="qOut">—</div></div>
+    <div class="card"><div class="k">Static thrust</div><div class="v" id="tOut">—</div><div class="v2" id="tOut2"></div></div>
+    <div class="card"><div class="k">Tip speed</div><div class="v" id="tipOut">—</div></div>
+  </div>
+
+  <div class="warn" id="warn"></div>
+
+  <div class="toolbar">
+    <button id="csvBtn">Export data (CSV)</button>
+    <button id="pngAll">Export all charts (PNG)</button>
+  </div>
+
+  <div class="chart-head"><p>Static thrust vs RPM (dashed = beyond max RPM)</p><button data-png="tChart">PNG</button></div>
+  <div class="chart-wrap"><canvas id="tChart" role="img" aria-label="Static thrust versus RPM"></canvas></div>
+
+  <div class="chart-head"><p>Shaft power vs RPM</p><button data-png="pChart">PNG</button></div>
+  <div class="chart-wrap"><canvas id="pChart" role="img" aria-label="Shaft power versus RPM"></canvas></div>
+
+  <div class="chart-head"><p>Torque vs RPM</p><button data-png="qChart">PNG</button></div>
+  <div class="chart-wrap"><canvas id="qChart" role="img" aria-label="Torque versus RPM"></canvas></div>
+
+  <footer>Model: Boucher power fit + momentum-theory thrust. RPM limits per APC published values (structural, constant tip speed) — verify against your prop's datasheet. Calibrate K<sub>p</sub> and FM from thrust-stand data.</footer>
+</main>
+
+<script>
+const el = id => document.getElementById(id);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const RHO = 1.225;
+
+function power(D, pitch, B, Kp, rpm){
+  return Kp * Math.pow(B/2, 0.8) * Math.pow(D/12, 4) * (pitch/12) * Math.pow(rpm/1000, 3);
+}
+function torque(P, rpm){ return P * 60 / (2 * Math.PI * rpm); }
+function thrust(P, D, fm){
+  const A = Math.PI * Math.pow(D * 0.0254, 2) / 4;
+  return Math.pow(2 * RHO * A * Math.pow(fm * P, 2), 1/3);
+}
+
+const limitLine = {
+  id: 'limitLine',
+  afterDatasetsDraw(chart, args, opts){
+    const xs = chart.scales.x, ys = chart.scales.y;
+    const labels = chart.data.labels;
+    let idx = -1;
+    for (let i = 0; i < labels.length; i++){ if (labels[i] >= opts.rpm){ idx = i; break; } }
+    if (idx < 0) return;
+    const x = xs.getPixelForValue(idx);
+    const c = chart.ctx;
+    c.save();
+    c.strokeStyle = css('--danger');
+    c.setLineDash([6,4]);
+    c.lineWidth = 1.5;
+    c.beginPath(); c.moveTo(x, ys.top); c.lineTo(x, ys.bottom); c.stroke();
+    c.setLineDash([]);
+    c.fillStyle = css('--danger');
+    c.font = '11px sans-serif';
+    c.textAlign = x > chart.width - 90 ? 'right' : 'left';
+    c.fillText('max ' + Math.round(opts.rpm).toLocaleString(), x + (x > chart.width - 90 ? -6 : 6), ys.top + 12);
+    c.restore();
+  }
+};
+
+// white background so exported PNGs aren't transparent
+const bgPlugin = {
+  id: 'bgFill',
+  beforeDraw(chart){
+    const c = chart.ctx;
+    c.save();
+    c.fillStyle = css('--bg');
+    c.fillRect(0, 0, chart.width, chart.height);
+    c.restore();
+  }
+};
+
+function makeChart(id, label, color){
+  return new Chart(el(id), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: label + ' (within limit)', data: [], borderColor: color, borderWidth: 2, pointRadius: 0, tension: 0.2 },
+      { label: label + ' (over limit)', data: [], borderColor: css('--danger'), borderWidth: 2, borderDash: [4,4], pointRadius: 0, tension: 0.2 }
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: false }, tooltip: { intersect: false, mode: 'index' }, limitLine: { rpm: 0 } },
+      scales: {
+        x: { title: { display: true, text: 'RPM', color: css('--muted') }, ticks: { color: css('--muted'), maxTicksLimit: 8 }, grid: { display: false } },
+        y: { title: { display: true, text: label, color: css('--muted') }, ticks: { color: css('--muted') }, grid: { color: 'rgba(137,135,129,0.25)' }, beginAtZero: true }
+      }
+    },
+    plugins: [limitLine, bgPlugin]
+  });
+}
+const tChart = makeChart('tChart', 'Thrust (N)', '#1baf7a');
+const pChart = makeChart('pChart', 'Power (W)', '#2a78d6');
+const qChart = makeChart('qChart', 'Torque (N·m)', '#eb6834');
+
+const pairs = [['dia','diaR'],['pitch','pitchR'],['blades','bladesR'],['kp','kpR'],['fm','fmR'],['oprpm','oprpmR']];
+let lastCurve = null;
+
+function val(id, lo, hi){
+  const v = parseFloat(el(id).value);
+  if (isNaN(v) || v < lo || v > hi) return null;
+  return v;
+}
+
+function params(){
+  return {
+    D: val('dia', 1, 100), pitch: val('pitch', 0.5, 50), B: val('blades', 2, 12),
+    Kp: val('kp', 0.5, 3), fm: val('fm', 0.1, 1)
+  };
+}
+
+function update(){
+  const { D, pitch, B, Kp, fm } = params();
+  const err = el('inputErr');
+  if ([D, pitch, B, Kp, fm].some(v => v === null)){
+    err.style.display = 'block';
+    err.textContent = 'Check inputs: diameter 1–100 in, pitch 0.5–50 in, blades 2–12, Kp 0.5–3, FM 0.1–1.';
+    return;
+  }
+  err.style.display = 'none';
+
+  const custom = el('ptype').value === 'custom';
+  el('customWrap').style.display = custom ? 'block' : 'none';
+  const maxRpm = custom ? (val('customMax', 500, 200000) || 10000) : parseInt(el('ptype').value) / D;
+  const axisMax = Math.ceil(maxRpm * 1.25 / 500) * 500;
+
+  el('oprpmR').max = axisMax;
+  let opRpm = val('oprpm', 100, 200000) || 1000;
+  if (opRpm > axisMax){ opRpm = axisMax; el('oprpm').value = axisMax; }
+  el('oprpmR').value = opRpm;
+
+  el('maxOut').textContent = Math.round(maxRpm).toLocaleString();
+
+  const labels = [];
+  const dataIn = { t: [], p: [], q: [] }, dataOver = { t: [], p: [], q: [] };
+  const rows = [];
+  const n = 50;
+  for (let i = 1; i <= n; i++){
+    const rpm = Math.round(axisMax * i / n);
+    const P = power(D, pitch, B, Kp, rpm);
+    const Q = torque(P, rpm);
+    const T = thrust(P, D, fm);
+    labels.push(rpm);
+    rows.push([rpm, T.toFixed(3), P.toFixed(1), Q.toFixed(4), rpm <= maxRpm ? '' : 'over_limit']);
+    const tgt = rpm <= maxRpm ? dataIn : dataOver;
+    const oth = rpm <= maxRpm ? dataOver : dataIn;
+    tgt.p.push(Math.round(P*10)/10); tgt.q.push(Math.round(Q*1000)/1000); tgt.t.push(Math.round(T*100)/100);
+    oth.p.push(null); oth.q.push(null); oth.t.push(null);
+  }
+  const lastIn = dataIn.p.map((v,i)=>v!==null?i:-1).reduce((a,b)=>Math.max(a,b),-1);
+  if (lastIn >= 0 && lastIn < n-1){
+    dataOver.p[lastIn] = dataIn.p[lastIn];
+    dataOver.q[lastIn] = dataIn.q[lastIn];
+    dataOver.t[lastIn] = dataIn.t[lastIn];
+  }
+  [[tChart,'t'],[pChart,'p'],[qChart,'q']].forEach(([ch,k])=>{
+    ch.data.labels = labels;
+    ch.data.datasets[0].data = dataIn[k];
+    ch.data.datasets[1].data = dataOver[k];
+    ch.options.plugins.limitLine.rpm = maxRpm;
+    ch.update();
+  });
+
+  const Pop = power(D, pitch, B, Kp, opRpm);
+  const Qop = torque(Pop, opRpm);
+  const Top = thrust(Pop, D, fm);
+  const tip = Math.PI * (D * 0.0254) * opRpm / 60;
+  el('pOut').textContent = Pop >= 1000 ? (Pop/1000).toFixed(2) + ' kW' : Math.round(Pop) + ' W';
+  el('qOut').textContent = Qop >= 10 ? Qop.toFixed(2) + ' N·m' : Qop.toFixed(3) + ' N·m';
+  el('tOut').textContent = Top.toFixed(1) + ' N';
+  el('tOut2').textContent = Math.round(Top / 9.81 * 1000).toLocaleString() + ' g · ' + (Top/Pop).toFixed(2) + ' N/W';
+  el('tipOut').textContent = Math.round(tip) + ' m/s (M' + (tip/343).toFixed(2) + ')';
+
+  const w = el('warn');
+  if (opRpm > maxRpm){
+    w.style.display = 'block';
+    w.textContent = 'Readout RPM exceeds the ' + Math.round(maxRpm).toLocaleString() + ' RPM limit for this prop.';
+  } else {
+    w.style.display = 'none';
+  }
+
+  lastCurve = { D, pitch, B, Kp, fm, maxRpm, rows };
+}
+
+function slug(){
+  const c = lastCurve;
+  return c.D + 'x' + c.pitch + 'x' + c.B;
+}
+
+function download(name, url){
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+el('csvBtn').addEventListener('click', ()=>{
+  if (!lastCurve) return;
+  const c = lastCurve;
+  const header = [
+    '# Prop performance model output',
+    '# D_in=' + c.D + ' pitch_in=' + c.pitch + ' blades=' + c.B + ' Kp=' + c.Kp + ' FM=' + c.fm,
+    '# maxRPM=' + Math.round(c.maxRpm) + ' rho=1.225 kg/m3',
+    '# Model: P=Kp*(B/2)^0.8*(D/12)^4*(pitch/12)*(RPM/1000)^3 [W]; Q=60P/(2*pi*RPM); T=(2*rho*A*(FM*P)^2)^(1/3)',
+    'rpm,thrust_N,power_W,torque_Nm,flag'
+  ].join('\n');
+  const body = c.rows.map(r => r.join(',')).join('\n');
+  const blob = new Blob([header + '\n' + body + '\n'], { type: 'text/csv' });
+  download('prop_' + slug() + '.csv', URL.createObjectURL(blob));
+});
+
+document.querySelectorAll('button[data-png]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    if (!lastCurve) return;
+    const id = btn.getAttribute('data-png');
+    download('prop_' + slug() + '_' + id.replace('Chart','') + '.png', el(id).toDataURL('image/png'));
+  });
+});
+
+el('pngAll').addEventListener('click', ()=>{
+  if (!lastCurve) return;
+  ['tChart','pChart','qChart'].forEach(id=>{
+    download('prop_' + slug() + '_' + id.replace('Chart','') + '.png', el(id).toDataURL('image/png'));
+  });
+});
+
+pairs.forEach(([num, rng])=>{
+  el(rng).addEventListener('input', ()=>{ el(num).value = el(rng).value; update(); });
+  el(num).addEventListener('input', ()=>{
+    const v = parseFloat(el(num).value);
+    if (!isNaN(v)) el(rng).value = Math.min(Math.max(v, parseFloat(el(rng).min)), parseFloat(el(rng).max));
+    update();
+  });
+});
+el('ptype').addEventListener('input', update);
+el('customMax').addEventListener('input', update);
+update();
+</script>
+</body>
+</html>
